@@ -1,0 +1,20 @@
+# DXF to JSON converter
+ezdxf>=1.0.0
+
+# PostgreSQL / Supabase database
+psycopg2-binary>=2.9.0
+# or use: psycopg[binary]>=3.0.0  # for psycopg3
+
+# Supabase Python client
+supabase>=2.0.0
+
+# OpenAI for embeddings
+openai>=1.0.0
+
+# FastAPI + uvicorn for API
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.0.0
+
+# NumPy for vector calculations
+numpy>=1.24.0
