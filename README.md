@@ -1,26 +1,154 @@
-# CAD Explorer
+# Drawing Analysis API (drawingLLM)
 
-DXFファイルをJSON経由でPostgreSQL/Supabaseに格納し、SQL検索・集計・Embedding検索を可能にするシステム
+包括的な図面解析REST API - DXF/DWG/PDF/画像の自動解析、BOM生成、寸法抽出、LLM要約
 
-## 🎯 目的
+## 🎯 プロジェクト概要
 
-- DXFファイルを解析してJSON形式で出力
-- PostgreSQL/Supabaseに構造化データとして格納
-- SQL検索・フィルタリング・集計を実現
-- 将来的にEmbedding検索（類似図面検索）に対応
+技術図面（DXF/DWG/PDF/画像）を解析し、構造化データとして抽出・要約する統合APIシステム。
+
+### 主要機能
+
+- ✅ **DXF解析エンジン** - 寸法、BOM、材質、注記の自動抽出
+- ✅ **REST API** - FastAPI + OpenAPI/Swagger文書
+- ✅ **LLM要約** - GPT-4による自然言語での図面要約
+- ✅ **ベクトル検索** - Supabase + pgvectorで類似図面検索
+- ✅ **構造化データベース** - PostgreSQL/Supabaseに格納
+- 🚧 **PDF解析** - ベクター/ラスター対応（準備中）
+- 🚧 **画像解析** - OCR + Vision Transformer（準備中）
+
+---
+
+## 🚀 クイックスタート
+
+### 1. セットアップ
+
+```bash
+# リポジトリをクローン
+git clone https://github.com/IchiroFukuda/drawingLLM.git
+cd drawingLLM
+
+# 仮想環境を作成
+python3 -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+
+# 依存パッケージをインストール
+pip install -r requirements.txt
+```
+
+### 2. 環境変数を設定
+
+```bash
+# OpenAI APIキー（LLM要約用）
+export OPENAI_API_KEY='sk-...'
+
+# Supabase（オプション、ベクトル検索用）
+export SUPABASE_URL='https://your-project.supabase.co'
+export SUPABASE_SERVICE_ROLE_KEY='eyJ...'
+```
+
+### 3. APIサーバーを起動
+
+```bash
+python3 drawing_analysis_api.py
+```
+
+APIが起動したら、ブラウザで以下にアクセス：
+- **Swagger UI**: http://localhost:8000/docs
+- **ヘルスチェック**: http://localhost:8000/api/v1/health
+
+---
+
+## 📡 API使用方法
+
+### ヘルスチェック
+
+```bash
+curl http://localhost:8000/api/v1/health
+```
+
+**レスポンス:**
+```json
+{
+  "status": "healthy",
+  "version": "1.0.0",
+  "features": {
+    "dxf_analysis": true,
+    "llm_summary": true,
+    "bom_extraction": true,
+    "dimension_extraction": true
+  }
+}
+```
+
+### 図面ファイルを解析
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/analyze" \
+  -H "X-API-Key: dev-key-12345" \
+  -F "file=@drawing.dxf" \
+  -F "generate_summary=true"
+```
+
+**レスポンス:**
+```json
+{
+  "job_id": "c9ca1459-8154-4a4f-bc2d-52d0933daa86",
+  "filename": "drawing.dxf",
+  "status": "completed",
+  "dimensions": {
+    "count": 15,
+    "items": [...]
+  },
+  "entities": {
+    "count": 248,
+    "summary": {
+      "LINE": 150,
+      "CIRCLE": 45,
+      "ARC": 30,
+      "TEXT": 23
+    }
+  },
+  "summary": {
+    "natural_language_summary": "SUS304製の取付ブラケットの図面で、全体寸法は150x75x50mm。4つのM6タップ穴があります。",
+    "key_dimensions": [...],
+    "materials": ["SUS304"],
+    "has_bom": true
+  }
+}
+```
+
+### 対応フォーマット
+
+```bash
+curl http://localhost:8000/api/v1/formats
+```
+
+| フォーマット | 拡張子 | ステータス | 機能 |
+|------------|--------|----------|------|
+| DXF | .dxf | ✅ 完全対応 | 寸法、BOM、材質、注記、エンティティ |
+| DWG | .dwg | 🚧 準備中 | - |
+| PDF | .pdf | 🚧 準備中 | - |
+| 画像 | .png, .jpg, .tiff | 🚧 準備中 | - |
+
+---
 
 ## 📁 プロジェクト構成
 
 ```
-cad-explorer/
-├── dxf_to_json.py         # DXF → JSON変換スクリプト
-├── json_to_db.py          # JSON → PostgreSQL インポートスクリプト
-├── test_connection.py     # DB接続テストスクリプト
-├── schema.sql             # データベーススキーマ定義（DDL）
-├── sample_queries.sql     # サンプルクエリ集（30種類）
-├── requirements.txt       # Python依存パッケージ
-└── README.md              # このファイル
+drawingLLM/
+├── drawing_analysis_api.py    # 統合REST APIサーバー
+├── enhanced_dxf_parser.py     # 拡張DXF解析エンジン
+├── dxf_to_json.py              # 基本DXF→JSON変換
+├── generate_embeddings.py      # ベクトル埋め込み生成
+├── import_to_supabase.py       # Supabaseデータ投入
+├── schema.sql                  # データベーススキーマ
+├── migration_embeddings.sql    # ベクトル検索用マイグレーション
+├── sample_queries.sql          # SQLクエリサンプル（30種類）
+├── requirements.txt            # Python依存パッケージ
+└── README.md                   # このファイル
 ```
+
+---
 
 ## 🗄️ データベース設計
 
@@ -31,12 +159,10 @@ cad-explorer/
 |--------|-----|------|
 | id | UUID | 主キー |
 | filename | TEXT | ファイル名 |
-| version | TEXT | AutoCADバージョン (例: R2000) |
+| version | TEXT | AutoCADバージョン |
 | layer_count | INTEGER | レイヤー数 |
 | entity_count | INTEGER | エンティティ数 |
 | layers | JSONB | レイヤー名のリスト |
-| entity_counts | JSONB | エンティティタイプごとのカウント |
-| created_at | TIMESTAMP | 作成日時 |
 
 ### `entities` テーブル
 1つの図形要素 = 1レコード
@@ -44,244 +170,246 @@ cad-explorer/
 | カラム | 型 | 説明 |
 |--------|-----|------|
 | id | UUID | 主キー |
-| drawing_id | UUID | 所属する図面 (外部キー) |
-| type | TEXT | エンティティタイプ (LINE, CIRCLE等) |
+| drawing_id | UUID | 所属する図面 |
+| type | TEXT | エンティティタイプ |
 | layer | TEXT | レイヤー名 |
-| color | INTEGER | 色番号 |
-| bbox | REAL[] | バウンディングボックス [minx, miny, maxx, maxy] |
-| start, end | REAL[] | 線分の始点・終点 |
-| center, radius | REAL[], REAL | 円・円弧の中心・半径 |
-| points | JSONB | ポリラインの頂点配列 |
 | text | TEXT | テキスト内容 |
-| embedding | VECTOR(1536) | 埋め込みベクトル（将来使用） |
+| bbox | REAL[] | バウンディングボックス |
 
-## 🚀 セットアップ
+### `embeddings` テーブル
+ベクトル検索用
 
-### 1. 依存パッケージのインストール
+| カラム | 型 | 説明 |
+|--------|-----|------|
+| id | BIGSERIAL | 主キー |
+| drawing_id | UUID | 図面ID |
+| entity_id | UUID | エンティティID |
+| payload | TEXT | 埋め込み対象テキスト |
+| embedding | VECTOR(3072) | 埋め込みベクトル |
 
-```bash
-# 仮想環境の作成と有効化
-python3 -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
+---
 
-# パッケージのインストール
-pip install -r requirements.txt
-```
+## 🔍 ベクトル検索（類似図面検索）
 
-### 2. Supabaseプロジェクトの準備
-
-#### Supabaseプロジェクトを作成
-1. [Supabase](https://supabase.com/) でプロジェクトを作成
-2. Settings → Database → Connection string (URI) をコピー
-
-#### 環境変数の設定
+### 1. データベースをセットアップ
 
 ```bash
-export DATABASE_URL='postgresql://postgres:[PASSWORD]@[HOST]:5432/postgres'
-```
-
-### 3. データベーススキーマの作成
-
-```bash
-# schema.sqlを実行してテーブルを作成
+# Supabaseでスキーマを作成
 psql $DATABASE_URL -f schema.sql
-
-# または
-cat schema.sql | psql $DATABASE_URL
+psql $DATABASE_URL -f migration_embeddings.sql
 ```
 
-### 4. 接続テスト
+### 2. 埋め込みベクトルを生成
 
 ```bash
-python test_connection.py
+# DXFファイルをSupabaseに投入
+python3 import_to_supabase.py out_json/
+
+# 埋め込みを生成
+export OPENAI_API_KEY='sk-...'
+python3 generate_embeddings.py --all
 ```
 
-正常に接続できれば、以下のような出力が表示されます：
-
-```
-====================================
-環境変数の確認
-====================================
-✓ DATABASE_URL: postgresql://postgres:***@...
-
-====================================
-データベース接続テスト
-====================================
-✓ データベースに接続成功
-✓ PostgreSQL バージョン: PostgreSQL 15.x
-
-====================================
-テーブルの確認
-====================================
-✓ drawings テーブルが存在します
-✓ entities テーブルが存在します
-```
-
-## 📊 使用方法
-
-### ステップ1: DXFファイルをJSONに変換
-
-```bash
-# 単一ファイルを変換
-python dxf_to_json.py input.dxf -o out_json --index
-
-# フォルダ内のすべてのDXFを一括変換
-python dxf_to_json.py dxf_folder/ -o out_json --index
-```
-
-生成されるファイル：
-- `out_json/input.json` - DXFデータのJSON表現
-- `out_json/index.jsonl` - 処理結果のサマリー
-
-### ステップ2: JSONをデータベースにインポート
-
-```bash
-# 環境変数が設定済みの場合
-python json_to_db.py out_json/
-
-# または接続文字列を直接指定
-python json_to_db.py out_json/ --db "postgresql://..."
-
-# ドライラン（実際には挿入しない）
-python json_to_db.py out_json/ --dry-run
-```
-
-### ステップ3: SQLで検索・分析
-
-```bash
-# psqlで接続
-psql $DATABASE_URL
-```
-
-```sql
--- すべての図面を一覧表示
-SELECT id, filename, entity_count, layer_count, created_at
-FROM drawings
-ORDER BY created_at DESC;
-
--- テキストを含むエンティティを検索
-SELECT d.filename, e.layer, e.text, e.position
-FROM entities e
-JOIN drawings d ON e.drawing_id = d.id
-WHERE e.type IN ('TEXT', 'MTEXT')
-  AND e.text IS NOT NULL;
-
--- レイヤーごとのエンティティ数
-SELECT layer, COUNT(*) as count
-FROM entities
-GROUP BY layer
-ORDER BY count DESC;
-```
-
-詳細なクエリ例は `sample_queries.sql` を参照してください（30種類のクエリを収録）。
-
-## 📝 サンプルクエリ
-
-`sample_queries.sql` には以下のようなクエリが含まれています：
-
-1. **基本検索** - ファイル名、エンティティタイプ、レイヤーで検索
-2. **幾何検索** - バウンディングボックス、半径、座標範囲で検索
-3. **テキスト検索** - 全文検索、パターンマッチング
-4. **集計・統計** - エンティティタイプ別カウント、レイヤー分布
-5. **複雑な検索** - 図面間の共通レイヤー、テキスト分布分析
-
-実行例：
-
-```bash
-psql $DATABASE_URL -f sample_queries.sql
-```
-
-## 🔍 検索例
-
-### 特定の文字列を含む図面を検索
-
-```sql
-SELECT d.filename, e.text, e.layer
-FROM entities e
-JOIN drawings d ON e.drawing_id = d.id
-WHERE e.text ILIKE '%タイトル%';
-```
-
-### 円の半径が100以上のエンティティを検索
-
-```sql
-SELECT d.filename, e.layer, e.center, e.radius
-FROM entities e
-JOIN drawings d ON e.drawing_id = d.id
-WHERE e.type = 'CIRCLE'
-  AND e.radius >= 100
-ORDER BY e.radius DESC;
-```
-
-### エンティティ数が最も多い図面トップ5
-
-```sql
-SELECT filename, entity_count, layer_count
-FROM drawings
-ORDER BY entity_count DESC
-LIMIT 5;
-```
-
-## 🎨 将来の拡張
-
-### Embedding検索の実装
+### 3. 意味検索を実行
 
 ```python
-# OpenAI APIでテキストをEmbedding化
 import openai
-embedding = openai.Embedding.create(input="図面のテキスト", model="text-embedding-ada-002")
+from supabase import create_client
 
-# PostgreSQLに保存
-UPDATE entities SET embedding = %s WHERE id = %s
+# クエリをベクトル化
+query = "ステンレス製のブラケット"
+embedding = openai.embeddings.create(
+    model="text-embedding-3-large",
+    input=query
+).data[0].embedding
+
+# 類似検索
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+# ... (詳細はapi.pyを参照)
 ```
 
-```sql
--- 類似検索クエリ
-SELECT d.filename, e.text, e.embedding <=> %s AS distance
-FROM entities e
-JOIN drawings d ON e.drawing_id = d.id
-WHERE e.embedding IS NOT NULL
-ORDER BY distance
-LIMIT 10;
+---
+
+## 🛠️ 技術スタック
+
+### バックエンド
+- **FastAPI** - REST APIフレームワーク
+- **ezdxf** - DXF解析ライブラリ
+- **OpenAI API** - LLM要約・埋め込み生成
+- **Supabase/PostgreSQL** - データベース
+- **pgvector** - ベクトル検索
+
+### 今後追加予定
+- **PyMuPDF / pypdf** - PDF解析
+- **OpenCV** - 画像前処理
+- **Vision Transformer** - 画像解析
+- **Tesseract OCR** - テキスト抽出
+
+---
+
+## 📊 使用例
+
+### 例1：DXFファイルから寸法を抽出
+
+```python
+from enhanced_dxf_parser import EnhancedDXFParser
+
+parser = EnhancedDXFParser("drawing.dxf")
+result = parser.parse()
+
+# 寸法情報
+for dim in result['dimensions']['items']:
+    print(f"寸法: {dim['measurement']}mm")
+
+# 材質情報
+for material in result['material_info']['items']:
+    print(f"材質: {material['content']}")
 ```
 
-## 🛠️ トラブルシューティング
+### 例2：API経由で解析
 
-### `ezdxf` のインストールエラー
+```python
+import requests
+
+response = requests.post(
+    "http://localhost:8000/api/v1/analyze",
+    headers={"X-API-Key": "dev-key-12345"},
+    files={"file": open("drawing.dxf", "rb")},
+    data={"generate_summary": True}
+)
+
+result = response.json()
+print(result['summary']['natural_language_summary'])
+```
+
+### 例3：バッチ処理
+
+```bash
+# 複数のDXFファイルを一括変換
+python3 dxf_to_json.py dxf_folder/ -o out_json --index
+
+# Supabaseに一括投入
+python3 import_to_supabase.py out_json/
+
+# 埋め込みを生成
+python3 generate_embeddings.py --all
+```
+
+---
+
+## 🧪 テスト
+
+### APIテスト
+
+```bash
+# ヘルスチェック
+curl http://localhost:8000/api/v1/health
+
+# DXF解析
+curl -X POST "http://localhost:8000/api/v1/analyze" \
+  -H "X-API-Key: dev-key-12345" \
+  -F "file=@test.dxf"
+
+# Swagger UIでインタラクティブテスト
+# http://localhost:8000/docs
+```
+
+### データベーステスト
+
+```bash
+python3 test_connection.py
+```
+
+---
+
+## 🚀 デプロイ
+
+### Docker（準備中）
+
+```dockerfile
+FROM python:3.10-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+COPY . .
+CMD ["python3", "drawing_analysis_api.py"]
+```
+
+### クラウドプラットフォーム
+
+- **Railway**: `railway up`
+- **Render**: Web Serviceとして設定
+- **AWS Lambda**: Serverless Framework
+
+---
+
+## 📚 参考資料
+
+- [ezdxf Documentation](https://ezdxf.readthedocs.io/)
+- [FastAPI Documentation](https://fastapi.tiangolo.com/)
+- [Supabase Documentation](https://supabase.com/docs)
+- [pgvector](https://github.com/pgvector/pgvector)
+- [OpenAI API](https://platform.openai.com/docs)
+
+---
+
+## 🤝 コントリビューション
+
+Issue・PRを歓迎します！
+
+### 優先度の高い実装予定機能
+
+- [ ] PDF解析（PyMuPDF）
+- [ ] 画像OCR（Tesseract + OpenCV）
+- [ ] BOM自動生成ロジック
+- [ ] GD&T記号認識（Vision Transformer）
+- [ ] Dockerコンテナ化
+- [ ] CI/CDパイプライン
+
+---
+
+## 📄 ライセンス
+
+MIT License
+
+---
+
+## 👤 Author
+
+IchiroFukuda
+
+---
+
+## ⚙️ トラブルシューティング
+
+### `ezdxf` インストールエラー
 
 ```bash
 pip install --upgrade pip
 pip install ezdxf
 ```
 
-### データベース接続エラー
-
-1. DATABASE_URLが正しく設定されているか確認
-2. Supabaseプロジェクトが起動しているか確認
-3. ファイアウォール設定を確認
+### APIが起動しない
 
 ```bash
-python test_connection.py
+# 依存パッケージを確認
+pip install -r requirements.txt
+pip install python-multipart
+
+# ポートを変更
+uvicorn drawing_analysis_api:app --port 8001
 ```
 
-### pgvector拡張機能が見つからない
+### OpenAI APIエラー
 
-Supabaseでは標準で有効化されていますが、自前のPostgreSQLの場合：
+```bash
+# APIキーを確認
+echo $OPENAI_API_KEY
 
-```sql
-CREATE EXTENSION vector;
+# 環境変数を再設定
+export OPENAI_API_KEY='sk-...'
 ```
 
-## 📚 参考
+---
 
-- [ezdxf Documentation](https://ezdxf.readthedocs.io/)
-- [Supabase Documentation](https://supabase.com/docs)
-- [pgvector](https://github.com/pgvector/pgvector)
-
-## 📄 ライセンス
-
-MIT License
-
-## 🤝 コントリビューション
-
-Issue・PRを歓迎します！
+**🎉 Let's analyze drawings with AI!**
