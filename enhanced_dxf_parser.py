@@ -71,7 +71,8 @@ class EnhancedDXFParser:
                 
                 # 位置情報
                 if hasattr(entity.dxf, 'defpoint'):
-                    dim_data["position"] = list(map(float, entity.dxf.defpoint[:2]))
+                    defpoint = entity.dxf.defpoint
+                    dim_data["position"] = [float(defpoint.x), float(defpoint.y)]
                 
                 self.dimensions.append(dim_data)
             except Exception as e:
@@ -87,6 +88,10 @@ class EnhancedDXFParser:
                 else:  # MTEXT
                     text_content = getattr(entity, "plain_text", lambda: "")()
                 
+                # 不正なUnicode文字を除去
+                if text_content:
+                    text_content = text_content.encode('utf-8', errors='ignore').decode('utf-8', errors='ignore')
+                
                 if not text_content or not text_content.strip():
                     continue
                 
@@ -101,7 +106,8 @@ class EnhancedDXFParser:
                 
                 # 位置情報
                 if hasattr(entity.dxf, 'insert'):
-                    text_data["position"] = list(map(float, entity.dxf.insert[:2]))
+                    insert = entity.dxf.insert
+                    text_data["position"] = [float(insert.x), float(insert.y)]
                 
                 self.texts.append(text_data)
                 
@@ -112,6 +118,10 @@ class EnhancedDXFParser:
                     self.annotations.append(text_data)
                     
             except Exception as e:
+                import sys
+                print(f"⚠️  Text extraction error: {e}", file=sys.stderr)
+                import traceback
+                traceback.print_exc()
                 continue
     
     def _classify_text(self, text: str) -> str:
@@ -154,9 +164,13 @@ class EnhancedDXFParser:
                 # BOMらしいブロック名をチェック
                 if block_name and any(keyword in block_name.upper() for keyword in 
                                      ['BOM', 'PARTS', 'LIST', '部品表', '部品リスト']):
+                    position = None
+                    if hasattr(entity.dxf, 'insert'):
+                        insert = entity.dxf.insert
+                        position = [float(insert.x), float(insert.y)]
                     table_data = {
                         "name": block_name,
-                        "position": list(map(float, entity.dxf.insert[:2])) if hasattr(entity.dxf, 'insert') else None,
+                        "position": position,
                         "type": "bom_candidate",
                         "confidence": 0.7  # ヒューリスティックなので中程度の信頼度
                     }
@@ -180,18 +194,22 @@ class EnhancedDXFParser:
                     
                     # タイプ別の幾何情報
                     if etype == 'CIRCLE':
+                        center = entity.dxf.center
                         entity_data["geometry"] = {
-                            "center": list(map(float, entity.dxf.center[:2])),
+                            "center": [float(center.x), float(center.y)],
                             "radius": float(entity.dxf.radius)
                         }
                     elif etype == 'LINE':
+                        start = entity.dxf.start
+                        end = entity.dxf.end
                         entity_data["geometry"] = {
-                            "start": list(map(float, entity.dxf.start[:2])),
-                            "end": list(map(float, entity.dxf.end[:2]))
+                            "start": [float(start.x), float(start.y)],
+                            "end": [float(end.x), float(end.y)]
                         }
                     elif etype == 'ARC':
+                        center = entity.dxf.center
                         entity_data["geometry"] = {
-                            "center": list(map(float, entity.dxf.center[:2])),
+                            "center": [float(center.x), float(center.y)],
                             "radius": float(entity.dxf.radius),
                             "start_angle": float(entity.dxf.start_angle),
                             "end_angle": float(entity.dxf.end_angle)
@@ -208,8 +226,12 @@ class EnhancedDXFParser:
     
     def _extract_metadata(self):
         """図面のメタデータを抽出"""
+        # ファイル名の不正な文字を除去
+        filename = str(self.filepath.name)
+        filename = filename.encode('utf-8', errors='ignore').decode('utf-8', errors='ignore')
+        
         self.metadata = {
-            "filename": self.filepath.name,
+            "filename": filename,
             "version": getattr(self.doc, 'acad_release', None),
             "layer_count": len(list(self.doc.layers)) if hasattr(self.doc, 'layers') else 0,
             "layers": [layer.dxf.name for layer in self.doc.layers] if hasattr(self.doc, 'layers') else []
