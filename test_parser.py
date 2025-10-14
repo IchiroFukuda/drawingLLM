@@ -41,3 +41,4 @@ for etype, count in summary.items():
 
 print("\n" + "="*60)
 print("完了！")
+

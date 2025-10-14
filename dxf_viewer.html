@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DXF Viewer</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+        }
+        #viewer-container {
+            width: 100%;
+            height: 600px;
+            position: relative;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        #canvas-container {
+            width: 100%;
+            height: 100%;
+        }
+        #controls {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 100;
+        }
+        .control-btn {
+            display: block;
+            width: 100%;
+            margin: 5px 0;
+            padding: 8px 12px;
+            border: none;
+            background: #667eea;
+            color: white;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .control-btn:hover {
+            background: #764ba2;
+        }
+        #info {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 10px 15px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            font-size: 12px;
+            z-index: 100;
+        }
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 24px;
+            z-index: 50;
+        }
+    </style>
+</head>
+<body>
+    <div id="viewer-container">
+        <div id="canvas-container"></div>
+        <div id="controls">
+            <h3 style="margin: 0 0 10px 0; font-size: 16px;">🎛️ コントロール</h3>
+            <button class="control-btn" onclick="resetView()">🔄 リセット</button>
+            <button class="control-btn" onclick="zoomIn()">🔍 ズームイン</button>
+            <button class="control-btn" onclick="zoomOut()">🔍 ズームアウト</button>
+            <button class="control-btn" onclick="toggleGrid()">📐 グリッド</button>
+        </div>
+        <div id="info">
+            <div><strong>操作:</strong></div>
+            <div>🖱️ 左ドラッグ: 回転</div>
+            <div>🖱️ 右ドラッグ: パン</div>
+            <div>🖱️ スクロール: ズーム</div>
+        </div>
+        <div id="loading">読み込み中...</div>
+    </div>
+
+    <!-- Three.js CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
+    <script>
+        // シーン、カメラ、レンダラーのセットアップ
+        let scene, camera, renderer, controls;
+        let dxfGroup;
+        let gridHelper;
+        
+        function init() {
+            const container = document.getElementById('canvas-container');
+            
+            // シーン
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xf5f5f5);
+            
+            // カメラ
+            camera = new THREE.PerspectiveCamera(
+                60,
+                container.clientWidth / container.clientHeight,
+                0.1,
+                10000
+            );
+            camera.position.set(100, 100, 100);
+            camera.lookAt(0, 0, 0);
+            
+            // レンダラー
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            container.appendChild(renderer.domElement);
+            
+            // グリッド
+            gridHelper = new THREE.GridHelper(500, 50, 0x888888, 0xcccccc);
+            gridHelper.rotation.x = Math.PI / 2;  // XY平面に配置
+            scene.add(gridHelper);
+            
+            // 軸ヘルパー
+            const axesHelper = new THREE.AxesHelper(50);
+            scene.add(axesHelper);
+            
+            // ライト
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.4);
+            directionalLight.position.set(10, 10, 10);
+            scene.add(directionalLight);
+            
+            // DXFグループ
+            dxfGroup = new THREE.Group();
+            scene.add(dxfGroup);
+            
+            // 簡易コントロール（マウス操作）
+            setupControls();
+            
+            // リサイズ対応
+            window.addEventListener('resize', onWindowResize);
+            
+            // アニメーションループ
+            animate();
+            
+            document.getElementById('loading').style.display = 'none';
+        }
+        
+        function setupControls() {
+            let isDragging = false;
+            let isRightDrag = false;
+            let previousMousePosition = { x: 0, y: 0 };
+            
+            renderer.domElement.addEventListener('mousedown', (e) => {
+                isDragging = true;
+                isRightDrag = e.button === 2;
+                previousMousePosition = { x: e.clientX, y: e.clientY };
+            });
+            
+            renderer.domElement.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+                
+                const deltaX = e.clientX - previousMousePosition.x;
+                const deltaY = e.clientY - previousMousePosition.y;
+                
+                if (isRightDrag) {
+                    // パン
+                    camera.position.x -= deltaX * 0.1;
+                    camera.position.y += deltaY * 0.1;
+                } else {
+                    // 回転
+                    const rotationSpeed = 0.005;
+                    camera.position.applyAxisAngle(new THREE.Vector3(0, 0, 1), -deltaX * rotationSpeed);
+                }
+                
+                previousMousePosition = { x: e.clientX, y: e.clientY };
+            });
+            
+            renderer.domElement.addEventListener('mouseup', () => {
+                isDragging = false;
+            });
+            
+            renderer.domElement.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                const zoomSpeed = 0.1;
+                const distance = camera.position.length();
+                const delta = e.deltaY > 0 ? 1 + zoomSpeed : 1 - zoomSpeed;
+                camera.position.multiplyScalar(delta);
+            });
+            
+            // 右クリックメニューを無効化
+            renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
+        }
+        
+        function onWindowResize() {
+            const container = document.getElementById('canvas-container');
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        }
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            camera.lookAt(0, 0, 0);
+            renderer.render(scene, camera);
+        }
+        
+        function resetView() {
+            camera.position.set(100, 100, 100);
+            camera.lookAt(0, 0, 0);
+        }
+        
+        function zoomIn() {
+            camera.position.multiplyScalar(0.8);
+        }
+        
+        function zoomOut() {
+            camera.position.multiplyScalar(1.2);
+        }
+        
+        function toggleGrid() {
+            gridHelper.visible = !gridHelper.visible;
+        }
+        
+        // DXFエンティティを描画
+        function renderDXFEntities(entities) {
+            // 既存のオブジェクトをクリア
+            while(dxfGroup.children.length > 0) {
+                dxfGroup.remove(dxfGroup.children[0]);
+            }
+            
+            if (!entities || entities.length === 0) {
+                console.warn('エンティティがありません');
+                return;
+            }
+            
+            entities.forEach(entity => {
+                try {
+                    if (entity.type === 'LINE' && entity.start && entity.end) {
+                        drawLine(entity);
+                    } else if (entity.type === 'CIRCLE' && entity.center && entity.radius) {
+                        drawCircle(entity);
+                    } else if (entity.type === 'ARC' && entity.center && entity.radius) {
+                        drawArc(entity);
+                    } else if (entity.type === 'LWPOLYLINE' && entity.points) {
+                        drawPolyline(entity);
+                    } else if (entity.type === 'SPLINE' && entity.fit_points) {
+                        drawSpline(entity);
+                    }
+                } catch (e) {
+                    console.error('エンティティ描画エラー:', e, entity);
+                }
+            });
+        }
+        
+        function drawLine(entity) {
+            const material = new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 2 });
+            const points = [
+                new THREE.Vector3(entity.start[0], entity.start[1], 0),
+                new THREE.Vector3(entity.end[0], entity.end[1], 0)
+            ];
+            const geometry = new THREE.BufferGeometry().setFromPoints(points);
+            const line = new THREE.Line(geometry, material);
+            dxfGroup.add(line);
+        }
+        
+        function drawCircle(entity) {
+            const material = new THREE.LineBasicMaterial({ color: 0x0000ff, linewidth: 2 });
+            const curve = new THREE.EllipseCurve(
+                entity.center[0], entity.center[1],
+                entity.radius, entity.radius,
+                0, 2 * Math.PI,
+                false, 0
+            );
+            const points = curve.getPoints(50);
+            const geometry = new THREE.BufferGeometry().setFromPoints(
+                points.map(p => new THREE.Vector3(p.x, p.y, 0))
+            );
+            const circle = new THREE.Line(geometry, material);
+            dxfGroup.add(circle);
+        }
+        
+        function drawArc(entity) {
+            const material = new THREE.LineBasicMaterial({ color: 0xff0000, linewidth: 2 });
+            const startAngle = entity.start_angle * Math.PI / 180;
+            const endAngle = entity.end_angle * Math.PI / 180;
+            const curve = new THREE.EllipseCurve(
+                entity.center[0], entity.center[1],
+                entity.radius, entity.radius,
+                startAngle, endAngle,
+                false, 0
+            );
+            const points = curve.getPoints(50);
+            const geometry = new THREE.BufferGeometry().setFromPoints(
+                points.map(p => new THREE.Vector3(p.x, p.y, 0))
+            );
+            const arc = new THREE.Line(geometry, material);
+            dxfGroup.add(arc);
+        }
+        
+        function drawPolyline(entity) {
+            const material = new THREE.LineBasicMaterial({ color: 0x00ff00, linewidth: 2 });
+            const points = entity.points.map(p => 
+                new THREE.Vector3(p[0], p[1], 0)
+            );
+            if (entity.is_closed && points.length > 0) {
+                points.push(points[0]);
+            }
+            const geometry = new THREE.BufferGeometry().setFromPoints(points);
+            const polyline = new THREE.Line(geometry, material);
+            dxfGroup.add(polyline);
+        }
+        
+        function drawSpline(entity) {
+            if (!entity.fit_points || entity.fit_points.length < 2) return;
+            
+            const material = new THREE.LineBasicMaterial({ color: 0xff00ff, linewidth: 2 });
+            const points = entity.fit_points.map(p => 
+                new THREE.Vector3(p[0], p[1], 0)
+            );
+            
+            // スプライン曲線を作成
+            const curve = new THREE.CatmullRomCurve3(points);
+            const curvePoints = curve.getPoints(50);
+            const geometry = new THREE.BufferGeometry().setFromPoints(curvePoints);
+            const spline = new THREE.Line(geometry, material);
+            dxfGroup.add(spline);
+        }
+        
+        // 初期化
+        window.addEventListener('load', () => {
+            init();
+            
+            // テスト用データ（実際はStreamlitから渡される）
+            const testEntities = [
+                {
+                    type: 'CIRCLE',
+                    center: [0, 0],
+                    radius: 20
+                },
+                {
+                    type: 'CIRCLE',
+                    center: [0, 0],
+                    radius: 10
+                },
+                {
+                    type: 'LINE',
+                    start: [-30, 0],
+                    end: [30, 0]
+                },
+                {
+                    type: 'LINE',
+                    start: [0, -30],
+                    end: [0, 30]
+                }
+            ];
+            
+            // デモ用
+            // renderDXFEntities(testEntities);
+        });
+        
+        // Streamlitから呼び出される関数
+        function loadDXF(entities) {
+            renderDXFEntities(entities);
+        }
+    </script>
+</head>
+<body>
+    <div id="viewer-container">
+        <div id="canvas-container"></div>
+        <div id="controls">
+            <h3 style="margin: 0 0 10px 0; font-size: 14px;">DXF Viewer</h3>
+            <button class="control-btn" onclick="resetView()">🔄 リセット</button>
+            <button class="control-btn" onclick="zoomIn()">➕ ズームイン</button>
+            <button class="control-btn" onclick="zoomOut()">➖ ズームアウト</button>
+            <button class="control-btn" onclick="toggleGrid()">📐 グリッド</button>
+        </div>
+        <div id="info">
+            <div><strong>🖱️ 操作方法:</strong></div>
+            <div>左ドラッグ: 回転</div>
+            <div>右ドラッグ: パン</div>
+            <div>スクロール: ズーム</div>
+        </div>
+        <div id="loading">DXFビューアー準備完了</div>
+    </div>
+</body>
+</html>
+

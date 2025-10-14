@@ -51,3 +51,4 @@ for entity in msp.query('TEXT MTEXT'):
 
 if not text_found:
     print("  ⚠️ TEXT/MTEXTエンティティが見つかりませんでした")
+
